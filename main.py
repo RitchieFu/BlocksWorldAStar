@@ -137,6 +137,8 @@ def get_successors(state: Tuple[Tuple[int, ...]]) -> List[Tuple[Tuple[int, ...],
 # TODO: Implement Node class
 # TODO: Implement A* algorithm
 # TODO: Implement helper functions for the heuristic
+# TODO: sometimes the algorithm will get stuck in a loop, so once A star is implemented, we can add a check to see if the same state has been visited before
+# This should get rid of the issue I think.
 
 ### REVISIT
 def get_support(state: Tuple[Tuple[int, ...], ...], block: int) -> str:
