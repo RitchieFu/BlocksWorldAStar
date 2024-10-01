@@ -228,46 +228,6 @@ def a_star(start_state: Tuple[Tuple[int, ...], ...],
     return None  # No solution found
 
 
-def ida_star(start_state: Tuple[Tuple[int, ...], ...],
-            goal_state: Tuple[Tuple[int, ...], ...],
-            blocks: Tuple[int, ...]) -> Optional[List[Tuple[Tuple[int, ...], ...]]]:
-    threshold = heuristic_h1_enhanced(start_state, goal_state, blocks)
-    path = []
-    visited = set()
-
-    def search(node_state, g, threshold, path, last_move):
-        f = g + heuristic_h1_enhanced(node_state, goal_state, blocks)
-        if f > threshold:
-            return f
-        if node_state == goal_state:
-            path.append(node_state)
-            return 'FOUND'
-        min_threshold = float('inf')
-        for successor, move in get_successors(node_state, blocks):
-            canonical_successor = canonical_state(successor)
-            if canonical_successor in visited:
-                continue
-            if last_move and move == (last_move[1], last_move[0]):
-                continue
-            visited.add(canonical_successor)
-            path.append(canonical_successor)
-            temp = search(canonical_successor, g + 1, threshold, path, move)
-            if temp == 'FOUND':
-                return 'FOUND'
-            if temp < min_threshold:
-                min_threshold = temp
-            path.pop()
-            visited.remove(canonical_successor)
-        return min_threshold
-
-    while True:
-        temp = search(start_state, 0, threshold, path, None)
-        if temp == 'FOUND':
-            return path
-        if temp == float('inf'):
-            return None
-        threshold = temp
-
 def define_goal(blocks: Tuple[int, ...]) -> Tuple[Tuple[int, ...], ...]:
     # Example Goal: All blocks in one stack sorted from smallest at bottom to largest at top
     sorted_blocks = tuple(sorted(blocks))

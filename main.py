@@ -135,7 +135,61 @@ def get_successors(state: Tuple[Tuple[int, ...]]) -> List[Tuple[Tuple[int, ...],
             
           
 # TODO: Implement Node class
+class Node:
+    def __init__(self, state: Tuple[Tuple[int, ...], ...], parent: Optional['Node'],
+                 cost: int, heuristic: int, last_move: Optional[Tuple[int, int]] = None):
+        self.state = state
+        self.parent = parent
+        self.cost = cost  # g(n): Cost from start to current node
+        self.heuristic = heuristic  # h(n): Estimated cost to goal
+        self.last_move = last_move  # (from_col, to_col)
+
+    def __lt__(self, other: 'Node'):
+        # Nodes are compared based on f(n) = g(n) + h(n)
+        return (self.cost + self.heuristic) < (other.cost + other.heuristic)
+    
+def reconstruct_path(node: Node) -> List[Tuple[Tuple[int, ...], ...]]:
+    path = []
+    while node:
+        path.append(node.state)
+        node = node.parent
+    path.reverse()
+    return path
 # TODO: Implement A* algorithm
+def a_star(start_state: Tuple[Tuple[int, ...], ...], 
+           goal_state: Tuple[Tuple[int, ...], ...],
+           blocks: Tuple[int, ...]) -> Optional[List[Tuple[Tuple[int, ...], ...]]]:
+   
+    open_set = []
+    start_h = heuristic_h1_enhanced(start_state, goal_state, blocks)
+    heapq.heappush(open_set, Node(start_state, None, 0, start_h))
+    closed_set = set()
+
+    while open_set:
+        current_node = heapq.heappop(open_set)
+
+        if current_node.state == goal_state:
+            return reconstruct_path(current_node)
+
+        if current_node.state in closed_set:
+            continue
+
+        closed_set.add(current_node.state)
+
+        for successor, move in get_successors(current_node.state):
+            if successor in closed_set:
+                continue
+
+            # Avoid reversing the last move
+            if current_node.last_move and move == (current_node.last_move[1], current_node.last_move[0]):
+                continue
+
+            tentative_cost = current_node.cost + 1  # Each move has a cost of 1
+            h = heuristic_h1_enhanced(successor, goal_state, blocks)
+            successor_node = Node(successor, current_node, tentative_cost, h, move)
+            heapq.heappush(open_set, successor_node)
+
+    return None  # No solution found
 # TODO: Implement helper functions for the heuristic
 # TODO: sometimes the algorithm will get stuck in a loop, so once A star is implemented, we can add a check to see if the same state has been visited before
 # This should get rid of the issue I think.
@@ -204,50 +258,47 @@ def define_goal(world: Tuple[Tuple[int,...]], world_size: int) -> Tuple[Tuple[in
     return tuple(goal)
 
 def main():
-    blocks = tuple(range(6))  # Blocks 0 through 5
+    grid_size = 10
+    blocks = tuple(range(grid_size))  # Blocks 0 through 5
 
     # Initialize the World with fewer columns
-    world = World(size=6)  # Reduced from 10 to 5 for testing purposes
+    world = World(size=grid_size)  # Reduced from 10 to 5 for testing purposes
     print("Initial World State:")
     world.show()
 
     # Define the Goal State
     goal_state = define_goal(world, world.size)
     print("Goal State:")
-    goal_world = World(grid=[list(col) for col in goal_state], size=6)
+    goal_world = World(size=grid_size, grid=[list(col) for col in goal_state])
     goal_world.show()
     print(goal_world.verify(goal_state))
 
-    start_state = world
-    state = start_state
+    start_state = world.grid_as_tuple()
+
+    solution = a_star(start_state, goal_state, blocks)
+
+    if solution:
+        print("\nSolution found with {} moves:".format(len(solution)-1))
+        for step, state in enumerate(solution):
+            print(f"Step {step}:")
+            temp_world = World(size=grid_size, grid=[list(col) for col in state])
+            temp_world.show()
+    else:
+        print("No solution found.")
     # while True:
-    for i in range(10):
-        successors = get_successors(state.grid_as_tuple())
-        heuristic_values = []
-        for successor in successors:
-            heuristic_values.append(heuristic_h1_enhanced(successor[0], goal_state, blocks))
-        # print(min(heuristic_values))
-        new_state_tuple = successors[heuristic_values.index(min(heuristic_values))][0]
-        state = World(grid=[list(col) for col in new_state_tuple], size=6)
-        state.show()
-        if state.verify(goal_state):
-            break
-    # print(get_successors(start_state))
+    # for i in range(10):
+    #     successors = get_successors(state.grid_as_tuple())
+    #     heuristic_values = []
+    #     for successor in successors:
+    #         heuristic_values.append(heuristic_h1_enhanced(successor[0], goal_state, blocks))
+    #     # print(min(heuristic_values))
+    #     new_state_tuple = successors[heuristic_values.index(min(heuristic_values))][0]
+    #     state = World(grid=[list(col) for col in new_state_tuple], size=6)
+    #     state.show()
+    #     if state.verify(goal_state):
+    #         break
 
-    # # Convert World grid to tuple of tuples
-    # start_state = world.grid_as_tuple()
 
-    # # Run A* algorithm
-    # solution = a_star(start_state, goal_state, blocks)
-
-    # if solution:
-    #     print("\nSolution found with {} moves:".format(len(solution)-1))
-    #     for step, state in enumerate(solution):
-    #         print(f"Step {step}:")
-    #         temp_world = World(grid=[list(col) for col in state], num_columns=10)
-    #         temp_world.show()
-    # else:
-    #     print("No solution found.")
 
 if __name__ == "__main__":
     main()
