@@ -182,13 +182,12 @@ def get_successors(state: Tuple[Tuple[int, ...]]) -> List[Tuple[Tuple[int, ...],
     
     return successors
             
-# TODO: Implement A* algorithm
 def a_star(start_state: Tuple[Tuple[int, ...], ...], 
            goal_state: Tuple[Tuple[int, ...], ...],
            blocks: Tuple[int, ...], max_depth=17) -> Optional[List[Tuple[Tuple[int, ...], ...]]]:
    
     open_set = []
-    start_h = heuristic_h1_enhanced(start_state, goal_state, blocks)
+    start_h = heuristic(start_state, blocks)
     heapq.heappush(open_set, Node(start_state, None, 0, start_h))
     closed_set = set()
 
@@ -213,14 +212,11 @@ def a_star(start_state: Tuple[Tuple[int, ...], ...],
                 continue
 
             tentative_cost = current_node.cost + 1  # Each move has a cost of 1
-            h = heuristic_h1_enhanced(successor, goal_state, blocks)
+            h = heuristic(successor, blocks)
             successor_node = Node(successor, current_node, tentative_cost, h, move)
             heapq.heappush(open_set, successor_node)
 
     return None  # No solution found
-# TODO: Implement helper functions for the heuristic
-# TODO: sometimes the algorithm will get stuck in a loop, so once A star is implemented, we can add a check to see if the same state has been visited before
-# This should get rid of the issue I think.
 
 ### REVISIT
 @lru_cache(maxsize=None)
@@ -238,78 +234,82 @@ def get_support(state: Tuple[Tuple[int, ...], ...], block: int) -> int:
                     return stack[i - 1]
     return -1  # If block not found, assume it's on the table
 
-def heuristic_h1_enhanced(current_state: Tuple[Tuple[int, ...], ...],
-                          goal_state: Tuple[Tuple[int, ...], ...],
-                          blocks: Tuple[int, ...]) -> int:
-    """
-    Enhanced heuristic that considers misplaced blocks and dependencies.
-    """
-    misplaced = 0
-    for block in blocks:
-        current_support = get_support(current_state, block)
-        goal_support = block - 1
-        if current_support != goal_support:
-            misplaced += 1
-            # Check if any block is on top of this block
-            for stack in current_state:
-                if block in stack:
-                    index = stack.index(block)
-                    if index < len(stack) - 1:
-                        # Blocks above this block are blocking it
-                        misplaced += len(stack) - index - 1
-                    break
-    return misplaced
+
 
 
 def define_goal(world: Tuple[Tuple[int,...]], world_size: int) -> Tuple[Tuple[int, ...], ...]:
-    # If the 0 is already at the bottom of a stack, then the goal state is that stack.
-    # Otherwise, the goal state is any column that is not currently occupied.
-
-    # The goal state should be the first free index plus the number of items on top of 0,
-    # assuming 0 is not at the bottom of a stack.
-    # If there are items on top of 0, then find the nth free column after the first free column.
-    #TODO
-
-    goal = []
-    free_cols = []
-    first_free = None
-    found_col = False
-    # Sorted order of the blocks
-    goal_state = tuple(range(world_size))
-    for i, col in enumerate(world.grid):
-        # If the column is empty, then it is a free column
-        if not col:
-            # TODO: Only really need the first free column
-            if not first_free:
-              first_free = i
-            goal.append(tuple())
-        else:
-          if col[0] == 0:
-              goal.append(goal_state)
-              found_col = True
-          else:
-              goal.append(tuple())
-    
-    if not found_col:
-        goal[first_free] = goal_state    
-    return tuple(goal)
-
+  """
+  Find the first open column for the goal state.
+  If the 0 is already at the bottom of a stack, then the goal state starts at that stack.
+  
+  I was considering optimizing where the goal state would start by looking at the number of blocks on top of 0.
+  If there are blocks on top of 0, then the goal state would be the nth free column after the first free column.
+  I considered this because I noticed that for some cases, trying to get 0 in the first free column
+  slowed down the search or added extra moves.
+  
+  However, this assignment is more about the heuristic and finding a fast solution, instead of the optimal solution.
+  """
+  goal = [tuple() for _ in range(world_size)]
+  first_free_col = -1
+  found_zero_bottom = False
+  # Sorted order of the blocks
+  goal_state = tuple(range(world_size))
+  for i, col in enumerate(world.grid):
+    # If the column is empty, then it is a free column
+    if not col: 
+      if first_free_col == -1:
+        first_free_col = i
+    else:
+      if col[0] == 0:
+        goal[i] = goal_state
+        found_zero_bottom = True
+        break
+  
+  # If none of the rows had 0 on the bottom, then the goal state starts at the first free column
+  if not found_zero_bottom:
+    goal[first_free_col] = goal_state    
+  return tuple(goal)
 
 
 def reconstruct_path(node: Node) -> List[Tuple[Tuple[int, ...], ...]]:
-    path = []
-    while node:
-        path.append(node.state)
-        node = node.parent
-    path.reverse()
-    return path
+  path = []
+  while node:
+    path.append(node.state)
+    node = node.parent
+  path.reverse()
+  return path
+  
+def heuristic(current_state: Tuple[Tuple[int, ...], ...], all_blocks: Tuple[int, ...]) -> int:
+  """
+  This heuristic looks at each block.
+  If the block below a block is not correct, then we know that block is misplaced.
   
   
+  """
+  misplaced = 0
+  
+  for block in all_blocks:
+      current_support = get_support(current_state, block)
+      goal_support = block - 1
+      if current_support != goal_support:
+          misplaced += 1
+          # Check if any block is on top of this block
+          for stack in current_state:
+              if block in stack:
+                  index = stack.index(block)
+                  if index < len(stack) - 1:
+                      # Blocks above this block are blocking it
+                      misplaced += len(stack) - index - 1
+                  break
+  return misplaced
+
+
 def main():
     grid_size = 10
     blocks = tuple(range(grid_size))  # Blocks 0 through 5
     flag = False
-    # world = World(size=grid_size, grid=[[3], [4], [], [], [], [], [7, 5], [6], [2, 1, 0, 8, 9], []]) 
+    # world = World(size=grid_size, grid=[[3], [4], [], [], [], [], [7, 5], [6], [2, 1, 0, 8, 9], []])
+    # world.show()
     world = World(size=grid_size)
     goal_state = None
     start_state = None
