@@ -1,102 +1,151 @@
-import random
-from typing import Tuple, List, Optional
+import cProfile
 import heapq
+import random
+import time
+from functools import lru_cache
+from typing import Tuple, List, Optional
+
 class World:
 
-  def __init__(self, size, grid=None):
-    # Using a stack structure within a 2D array.
-    # Initialize an array of 10 empty arrays.
+  def __init__(self, size: int = None, grid: List[List[int]] = None):
+    """ 
+    The grid is implemented as a list of lists, where each list is a stack/column.
+    The size is flexible, although the default value is 10.
+    If not grid is provided, generate a random grid. Otherwise, check if the custom grid is valid.
+    """
     self.size = size
+    if not self.size:
+       self.size = 10
+    
     self.grid = grid
-    # If no grid is provided, grid=None, so generate a random grid.
     if not self.grid:
       self.gen_random_grid()
     else:
-      # Otherwise, check if the custom grid is valid.
       self.handle_custom_grid()
 
-  # Generate a random grid.
+
   def gen_random_grid(self):
+    """
+    Generate a random grid of size self.size.
+    This function may be used after a solution has been found to generate a new random grid.
+    """
     # Start with 10 empty lists.
-    self.grid = [[] for i in range(self.size)]
+    self.grid = [[] for _ in range(self.size)]
     # Shuffle the range from 0-9 before randomly adding them to the grid.
     numbers = [i for i in range(self.size)]
     random.shuffle(numbers)
     for num in numbers:
       self.grid[random.randint(0, self.size - 1)].append(num)
 
-  # Error handling for custom grids.
-  # Checks if the grid has too many elements, too few elements, if there are duplicates,
-  # and if the values are between 0-9. If any of those are False, generate a random grid.
+  
   def handle_custom_grid(self):
-      valid_set = set((range(self.size)))
-      custom_set = set()
-      grid_items = 0
-      for col in self.grid:
-        grid_items += len(col)
-        if grid_items > self.size:
-          print(grid_items)
-          print(self.size)
-          print("Custom list has too many elements. Generating random grid.")
-          self.gen_random_grid()
-          return
-        for value in col:
-          if value not in valid_set:
-            print("Values must be 0-9. Generating random grid.")
-            self.gen_random_grid()
-            return
-          else:
-            if value not in custom_set:
-              custom_set.add(value)
-            else:
-              print("Cannot have duplicate block values. Generating random grid.")
-              self.gen_random_grid()
-              return
-
-      # If the sets are different, then the custom grid is invalid.
-      # Could also check using the grid_items variable.
-      if len(valid_set.difference(custom_set)) != 0:
-        print("Grids have different number of elements. Generating random grid.")
+    """
+    Error handling for custom grids.
+    Checks if the grid has too many elements, too few elements, if there are duplicates,
+    or if the values are between 0-9. If any of those are true, generate a random grid.
+    """
+    valid_set = set((range(self.size)))
+    custom_set = set()
+    grid_items = 0
+    for col in self.grid:
+      grid_items += len(col)
+      # Too many elements in the custom grid
+      if grid_items > self.size:
+        print(grid_items)
+        print(self.size)
+        print("Custom list has too many elements. Generating random grid.")
         self.gen_random_grid()
         return
+      for value in col:
+        # Value not in the range of 0 to self.size
+        if value not in valid_set:
+          print("Values must be 0-9. Generating random grid.")
+          self.gen_random_grid()
+          return
+        else:
+          if value not in custom_set:
+            custom_set.add(value)
+          else:
+            # Duplicate values in the custom grid
+            print("Cannot have duplicate block values. Generating random grid.")
+            self.gen_random_grid()
+            return
 
-  # Print out the current state of the grid.
-  # Kind of like a 90 degree counter-clockwise rotation on the original list of lists.
+    # If the code reaches this point, the values are valid but the sets may have different lengths.
+    if len(valid_set.difference(custom_set)) != 0:
+      print("Grids have different number of elements. Generating random grid.")
+      self.gen_random_grid()
+      return
+
+
   def show(self):
+    """
+    Print out the current state of the grid.
+    Kind of like a 90 degree counter-clockwise rotation of the grid.
+    """
     ret = []
     for row in range(self.size):
       curr = ["|"]
       for col in range(self.size):
         try:
           curr.append(str(self.grid[col][row]) + "|")
-        except:
+        except: # If the column is empty, print a space.
           curr.append(" |")
       ret.append("".join(curr))
 
+    # Print the grid in reverse order so that the 1st row is at the bottom.
     for i in range(len(ret) - 1, -1, -1):
       print(ret[i])
     print("_____________________")
 
-  # Make a random move of one block.
-  # Only the blocks on the top of a stack may be moved to any other stack.
+  
   def move_random_block(self):
+    """
+    Make a random move of one block.
+    Only the blocks on the top of a stack may be moved to any other stack.
+    """
     # Get all indices of non-empty columns
     non_empty = [i for i, row in enumerate(self.grid) if row]
     # Pop one block from a non-empty column and move it to anywhere except its current position
     col_to_pop = random.choice(non_empty)
     pop_block = self.grid[col_to_pop].pop()
-    non_empty.remove(col_to_pop)
+    # Line below does nothing. Considering removing it.
+    # non_empty.remove(col_to_pop)
     # Append pop_block to a random column
     col_to_add = random.choice([i for i in range(self.size) if i != col_to_pop])
     self.grid[col_to_add].append(pop_block)
 
+
   def verify(self, goal_state: Tuple[Tuple[int, ...], ...]) -> bool:
+    """Check if the current state of the grid is the same as the goal state."""
     return self.grid_as_tuple() == goal_state
 
+
   def grid_as_tuple(self) -> Tuple[Tuple[int, ...], ...]:
+    """
+    Convert the grid to a tuple so that we can add it to the closed set.
+    The closed set is used to keep track of visited states.
+    """
     return tuple(tuple(col) for col in self.grid)
 
+  
+class Node:
+  def __init__(self, state: Tuple[Tuple[int, ...], ...], parent: Optional['Node'],
+                cost: int, heuristic: int, last_move: Optional[Tuple[int, int]] = None):
+      
+    self.state = state
+    self.parent = parent
+    self.cost = cost  # g(n): Cost from start to current node
+    self.heuristic = heuristic  # h(n): Estimated cost to goal
+    self.last_move = last_move  # (from_col, to_col)
 
+  # Consider removing because it is not used...
+  def __lt__(self, other: 'Node'):
+    # Nodes are compared based on f(n) = g(n) + h(n)
+    return (self.cost + self.heuristic) < (other.cost + other.heuristic)
+      
+      
+# Helper Functions
 def get_successors(state: Tuple[Tuple[int, ...]]) -> List[Tuple[Tuple[int, ...], Tuple[int, int]]]:
     """
     Generates all possible next states by moving the top block from one stack to another.
@@ -133,32 +182,10 @@ def get_successors(state: Tuple[Tuple[int, ...]]) -> List[Tuple[Tuple[int, ...],
     
     return successors
             
-          
-# TODO: Implement Node class
-class Node:
-    def __init__(self, state: Tuple[Tuple[int, ...], ...], parent: Optional['Node'],
-                 cost: int, heuristic: int, last_move: Optional[Tuple[int, int]] = None):
-        self.state = state
-        self.parent = parent
-        self.cost = cost  # g(n): Cost from start to current node
-        self.heuristic = heuristic  # h(n): Estimated cost to goal
-        self.last_move = last_move  # (from_col, to_col)
-
-    def __lt__(self, other: 'Node'):
-        # Nodes are compared based on f(n) = g(n) + h(n)
-        return (self.cost + self.heuristic) < (other.cost + other.heuristic)
-    
-def reconstruct_path(node: Node) -> List[Tuple[Tuple[int, ...], ...]]:
-    path = []
-    while node:
-        path.append(node.state)
-        node = node.parent
-    path.reverse()
-    return path
 # TODO: Implement A* algorithm
 def a_star(start_state: Tuple[Tuple[int, ...], ...], 
            goal_state: Tuple[Tuple[int, ...], ...],
-           blocks: Tuple[int, ...]) -> Optional[List[Tuple[Tuple[int, ...], ...]]]:
+           blocks: Tuple[int, ...], max_depth=17) -> Optional[List[Tuple[Tuple[int, ...], ...]]]:
    
     open_set = []
     start_h = heuristic_h1_enhanced(start_state, goal_state, blocks)
@@ -167,7 +194,8 @@ def a_star(start_state: Tuple[Tuple[int, ...], ...],
 
     while open_set:
         current_node = heapq.heappop(open_set)
-
+        if current_node.cost > max_depth:
+           return reconstruct_path(current_node)
         if current_node.state == goal_state:
             return reconstruct_path(current_node)
 
@@ -178,7 +206,7 @@ def a_star(start_state: Tuple[Tuple[int, ...], ...],
 
         for successor, move in get_successors(current_node.state):
             if successor in closed_set:
-                continue
+              continue
 
             # Avoid reversing the last move
             if current_node.last_move and move == (current_node.last_move[1], current_node.last_move[0]):
@@ -195,7 +223,8 @@ def a_star(start_state: Tuple[Tuple[int, ...], ...],
 # This should get rid of the issue I think.
 
 ### REVISIT
-def get_support(state: Tuple[Tuple[int, ...], ...], block: int) -> str:
+@lru_cache(maxsize=None)
+def get_support(state: Tuple[Tuple[int, ...], ...], block: int) -> int:
     """
     Returns the block that is directly below the given block in the state.
     If the block is on the table, returns 'Table'.
@@ -204,10 +233,10 @@ def get_support(state: Tuple[Tuple[int, ...], ...], block: int) -> str:
         for i, b in enumerate(stack):
             if b == block:
                 if i == 0:
-                    return 'Table'
+                    return -1
                 else:
-                    return str(stack[i - 1])
-    return 'Table'  # If block not found, assume it's on the table
+                    return stack[i - 1]
+    return -1  # If block not found, assume it's on the table
 
 def heuristic_h1_enhanced(current_state: Tuple[Tuple[int, ...], ...],
                           goal_state: Tuple[Tuple[int, ...], ...],
@@ -218,7 +247,7 @@ def heuristic_h1_enhanced(current_state: Tuple[Tuple[int, ...], ...],
     misplaced = 0
     for block in blocks:
         current_support = get_support(current_state, block)
-        goal_support = get_support(goal_state, block)
+        goal_support = block - 1
         if current_support != goal_support:
             misplaced += 1
             # Check if any block is on top of this block
@@ -235,8 +264,15 @@ def heuristic_h1_enhanced(current_state: Tuple[Tuple[int, ...], ...],
 def define_goal(world: Tuple[Tuple[int,...]], world_size: int) -> Tuple[Tuple[int, ...], ...]:
     # If the 0 is already at the bottom of a stack, then the goal state is that stack.
     # Otherwise, the goal state is any column that is not currently occupied.
+
+    # The goal state should be the first free index plus the number of items on top of 0,
+    # assuming 0 is not at the bottom of a stack.
+    # If there are items on top of 0, then find the nth free column after the first free column.
+    #TODO
+
     goal = []
-    last_free = None
+    free_cols = []
+    first_free = None
     found_col = False
     # Sorted order of the blocks
     goal_state = tuple(range(world_size))
@@ -244,61 +280,74 @@ def define_goal(world: Tuple[Tuple[int,...]], world_size: int) -> Tuple[Tuple[in
         # If the column is empty, then it is a free column
         if not col:
             # TODO: Only really need the first free column
-            last_free = i
+            if not first_free:
+              first_free = i
             goal.append(tuple())
-            continue
-        if col[0] == 0:
-            goal.append(goal_state)
-            found_col = True
         else:
-            goal.append(tuple())
+          if col[0] == 0:
+              goal.append(goal_state)
+              found_col = True
+          else:
+              goal.append(tuple())
     
     if not found_col:
-        goal[last_free] = goal_state    
+        goal[first_free] = goal_state    
     return tuple(goal)
 
+
+
+def reconstruct_path(node: Node) -> List[Tuple[Tuple[int, ...], ...]]:
+    path = []
+    while node:
+        path.append(node.state)
+        node = node.parent
+    path.reverse()
+    return path
+  
+  
 def main():
     grid_size = 10
     blocks = tuple(range(grid_size))  # Blocks 0 through 5
+    flag = False
+    # world = World(size=grid_size, grid=[[3], [4], [], [], [], [], [7, 5], [6], [2, 1, 0, 8, 9], []]) 
+    world = World(size=grid_size)
+    goal_state = None
+    start_state = None
+    solution = None
+    for i in range(10):
+      print(i)
+      print("Initial World State:")
+      print(world.grid)
+      # world.show()
 
-    # Initialize the World with fewer columns
-    world = World(size=grid_size)  # Reduced from 10 to 5 for testing purposes
-    print("Initial World State:")
-    world.show()
-
-    # Define the Goal State
-    goal_state = define_goal(world, world.size)
-    print("Goal State:")
-    goal_world = World(size=grid_size, grid=[list(col) for col in goal_state])
-    goal_world.show()
-    print(goal_world.verify(goal_state))
-
-    start_state = world.grid_as_tuple()
-
-    solution = a_star(start_state, goal_state, blocks)
-
-    if solution:
-        print("\nSolution found with {} moves:".format(len(solution)-1))
-        for step, state in enumerate(solution):
+      # Define the Goal State
+      goal_state = define_goal(world, world.size)
+      print(goal_state)
+      start_state = world.grid_as_tuple()
+      start = time.time()
+      solution = a_star(start_state, goal_state, blocks)
+      end = time.time()
+      if solution:
+          print("Solution found in {:.2f} seconds with {} moves:".format(end - start, len(solution)-1))
+          print("\nSolution found with {} moves:".format(len(solution)-1))
+          for step, state in enumerate(solution):
             print(f"Step {step}:")
             temp_world = World(size=grid_size, grid=[list(col) for col in state])
             temp_world.show()
-    else:
-        print("No solution found.")
-    # while True:
-    # for i in range(10):
-    #     successors = get_successors(state.grid_as_tuple())
-    #     heuristic_values = []
-    #     for successor in successors:
-    #         heuristic_values.append(heuristic_h1_enhanced(successor[0], goal_state, blocks))
-    #     # print(min(heuristic_values))
-    #     new_state_tuple = successors[heuristic_values.index(min(heuristic_values))][0]
-    #     state = World(grid=[list(col) for col in new_state_tuple], size=6)
-    #     state.show()
-    #     if state.verify(goal_state):
-    #         break
-
-
+          world.gen_random_grid()
+          continue
+      else:
+          print(start_state)
+          print("No solution found.")
+          flag = True
+          break
+    
+    if not flag:
+       print("A* worked for all 100 cases")
 
 if __name__ == "__main__":
+    profiler = cProfile.Profile()
+    profiler.enable()
     main()
+    profiler.disable()
+    profiler.print_stats(sort='time')
