@@ -133,15 +133,15 @@ class Node:
   def __init__(self, state: Tuple[Tuple[int, ...], ...], parent: Optional['Node'],
                 cost: int, heuristic: int, last_move: Optional[Tuple[int, int]] = None):
       
-    self.state = state
-    self.parent = parent
-    self.cost = cost  # g(n): Cost from start to current node
+    self.state = state # This is the state of the Node as a tuple of tuple of integers.
+    self.parent = parent # Keep track of the parent node so we can reconstruct the path later.
+    self.cost = cost  # g(n): Cost from start to get to the current node
     self.heuristic = heuristic  # h(n): Estimated cost to goal
     self.last_move = last_move  # (from_col, to_col)
 
-  # Consider removing because it is not used...
   def __lt__(self, other: 'Node'):
-    # Nodes are compared based on f(n) = g(n) + h(n)
+    # Need this operator for the priority queue/min heap so that we can explore the nodes with the lowest cost first.
+    # Nodes are compared based on the total cost of f(n) = g(n) + h(n)
     return (self.cost + self.heuristic) < (other.cost + other.heuristic)
       
       
@@ -149,30 +149,29 @@ class Node:
 def get_successors(state: Tuple[Tuple[int, ...]]) -> List[Tuple[Tuple[int, ...], Tuple[int, int]]]:
     """
     Generates all possible next states by moving the top block from one stack to another.
-    
-    Parameters:
-    - state: Current state of the world grid.
-
-    Returns:
-    - A list of tuples where each tuple contains:
-        1. The new state of the grid
+    The function takes in a grid state and returns a list of possible successor states.
+    In the return list, each tuple contains:
+        1. The new state of the grid (tuple of tuples of integers)
         2. A tuple representing the move as (from_column, to_column)
     """
-    # Assisted by ChatGPT
     successors = []
     num_columns = len(state)
     for from_col, stack in enumerate(state):
         # If the stack is empty, skip it
         if not stack:
             continue
-
+        
+        # Get the top block of the stack
         stack_top = stack[-1]
 
+        # Go through all the other columns except the current one
         for to_col in range(num_columns):
             if from_col == to_col:
                 continue
             # Create a new state by moving the block
-            new_state = list(list(col) for col in state)  # Deep copy of the state
+            # Copy all of the elements in state and convert it to a list of lists
+            # Must do this because tuples are immutable
+            new_state = list(list(col) for col in state)  
             new_state[from_col].pop()  # Remove the block from the current stack
             new_state[to_col].append(stack_top)  # Add the block to the target stack
             new_state_tuple = tuple(tuple(col) for col in new_state)  # Convert back to tuple of tuples
@@ -181,49 +180,58 @@ def get_successors(state: Tuple[Tuple[int, ...]]) -> List[Tuple[Tuple[int, ...],
             successors.append((new_state_tuple, move))
     
     return successors
+   
             
 def a_star(start_state: Tuple[Tuple[int, ...], ...], 
            goal_state: Tuple[Tuple[int, ...], ...],
-           blocks: Tuple[int, ...], max_depth=17) -> Optional[List[Tuple[Tuple[int, ...], ...]]]:
+           blocks_in_grid: Tuple[int, ...]) -> Optional[List[Tuple[Tuple[int, ...], ...]]]:
    
+    # The open set is a priority queue of nodes to explore, with lowest cost nodes explored first
     open_set = []
-    start_h = heuristic(start_state, blocks)
+    # Calculate the heuristic for the initial state
+    start_h = heuristic(start_state, blocks_in_grid)
     heapq.heappush(open_set, Node(start_state, None, 0, start_h))
+    # These are the states that have already been visited. Since states are tuples, they can be hashed and added to a set.
+    # We do not want to revisit states as sometimes this can cause infinite loops or extra steps.
     closed_set = set()
 
     while open_set:
+        # Get the node with the lowest cost
         current_node = heapq.heappop(open_set)
-        if current_node.cost > max_depth:
-           return reconstruct_path(current_node)
+
         if current_node.state == goal_state:
             return reconstruct_path(current_node)
 
+        # If this state has already been visited, move on to the next one
         if current_node.state in closed_set:
             continue
-
+        
+        # Add the current state to the closed set
         closed_set.add(current_node.state)
 
+        # Generate all possible next moves from the current state
         for successor, move in get_successors(current_node.state):
+
+            # If a next state has already been visited, skip it
             if successor in closed_set:
               continue
 
-            # Avoid reversing the last move
+            # If a node has a last move and the current move is just the last move reversed, skip it
             if current_node.last_move and move == (current_node.last_move[1], current_node.last_move[0]):
                 continue
 
-            tentative_cost = current_node.cost + 1  # Each move has a cost of 1
-            h = heuristic(successor, blocks)
-            successor_node = Node(successor, current_node, tentative_cost, h, move)
+            h = heuristic(successor, blocks_in_grid)
+            successor_node = Node(successor, current_node, current_node.cost + 1, h, move)
             heapq.heappush(open_set, successor_node)
 
-    return None  # No solution found
+    # No solution found
+    return None  
 
-### REVISIT
-@lru_cache(maxsize=None)
-def get_support(state: Tuple[Tuple[int, ...], ...], block: int) -> int:
+
+def get_block_below(state: Tuple[Tuple[int, ...], ...], block: int) -> int:
     """
     Returns the block that is directly below the given block in the state.
-    If the block is on the table, returns 'Table'.
+    If the block is on the table, return -1.
     """
     for stack in state:
         for i, b in enumerate(stack):
@@ -242,13 +250,13 @@ def define_goal(world: Tuple[Tuple[int,...]], world_size: int) -> Tuple[Tuple[in
   Find the first open column for the goal state.
   If the 0 is already at the bottom of a stack, then the goal state starts at that stack.
   
-  I was considering optimizing where the goal state would start by looking at the number of blocks on top of 0.
+  I was co
+  nsidering optimizing where the goal state would start by looking at the number of blocks on top of 0.
   If there are blocks on top of 0, then the goal state would be the nth free column after the first free column.
   I considered this because I noticed that for some cases, trying to get 0 in the first free column
   slowed down the search or added extra moves.
-  
-  However, this assignment is more about the heuristic and finding a fast solution, instead of the optimal solution.
   """
+  # Set up a blank goal state, eventually will populate with the blocks in order
   goal = [tuple() for _ in range(world_size)]
   first_free_col = -1
   found_zero_bottom = False
@@ -260,6 +268,8 @@ def define_goal(world: Tuple[Tuple[int,...]], world_size: int) -> Tuple[Tuple[in
       if first_free_col == -1:
         first_free_col = i
     else:
+      # If the bottom of the stack is a 0, then you have found the goal state
+      # Then, you can break and return the goal state.
       if col[0] == 0:
         goal[i] = goal_state
         found_zero_bottom = True
@@ -268,13 +278,17 @@ def define_goal(world: Tuple[Tuple[int,...]], world_size: int) -> Tuple[Tuple[in
   # If none of the rows had 0 on the bottom, then the goal state starts at the first free column
   if not found_zero_bottom:
     goal[first_free_col] = goal_state    
+  
   return tuple(goal)
 
 
-def reconstruct_path(node: Node) -> List[Tuple[Tuple[int, ...], ...]]:
+def reconstruct_path(node: Node) -> List[Node]:
+  """
+  Takes a node and goes up the parent tree to reconstruct the path.
+  """
   path = []
   while node:
-    path.append(node.state)
+    path.append(node)
     node = node.parent
   path.reverse()
   return path
@@ -283,13 +297,15 @@ def heuristic(current_state: Tuple[Tuple[int, ...], ...], all_blocks: Tuple[int,
   """
   This heuristic looks at each block.
   If the block below a block is not correct, then we know that block is misplaced.
-  
+  However, it is not enough to just count the number of misplaced blocks.
+  Some blocks are restricted by other blocks, so it takes more moves to get them to the correct position.
+  I calculate that by counting the number of blocks above the misplaced block.
   
   """
   misplaced = 0
   
   for block in all_blocks:
-      current_support = get_support(current_state, block)
+      current_support = get_block_below(current_state, block)
       goal_support = block - 1
       if current_support != goal_support:
           misplaced += 1
@@ -308,13 +324,13 @@ def main():
     grid_size = 10
     blocks = tuple(range(grid_size))  # Blocks 0 through 5
     flag = False
-    # world = World(size=grid_size, grid=[[3], [4], [], [], [], [], [7, 5], [6], [2, 1, 0, 8, 9], []])
+    world = World(size=grid_size, grid=[[1,0,2,3,4,5,6,7,8,9], [], [], [], [], [], [], [], [], []])
     # world.show()
-    world = World(size=grid_size)
+    # world = World(size=grid_size)
     goal_state = None
     start_state = None
     solution = None
-    for i in range(10):
+    for i in range(1):
       print(i)
       print("Initial World State:")
       print(world.grid)
@@ -332,7 +348,8 @@ def main():
           print("\nSolution found with {} moves:".format(len(solution)-1))
           for step, state in enumerate(solution):
             print(f"Step {step}:")
-            temp_world = World(size=grid_size, grid=[list(col) for col in state])
+            print(f"Heuristic estimate: {state.heuristic}")
+            temp_world = World(size=grid_size, grid=[list(col) for col in state.state])
             temp_world.show()
           world.gen_random_grid()
           continue
