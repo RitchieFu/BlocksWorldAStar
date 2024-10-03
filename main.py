@@ -240,9 +240,7 @@ def get_block_below(state: Tuple[Tuple[int, ...], ...], block: int) -> int:
                     return -1
                 else:
                     return stack[i - 1]
-    return -1  # If block not found, assume it's on the table
-
-
+    return -1  # If block not found, assume it's on the ground
 
 
 def define_goal(world: Tuple[Tuple[int,...]], world_size: int) -> Tuple[Tuple[int, ...], ...]:
@@ -250,8 +248,7 @@ def define_goal(world: Tuple[Tuple[int,...]], world_size: int) -> Tuple[Tuple[in
   Find the first open column for the goal state.
   If the 0 is already at the bottom of a stack, then the goal state starts at that stack.
   
-  I was co
-  nsidering optimizing where the goal state would start by looking at the number of blocks on top of 0.
+  I was considering optimizing where the goal state would start by looking at the number of blocks on top of 0.
   If there are blocks on top of 0, then the goal state would be the nth free column after the first free column.
   I considered this because I noticed that for some cases, trying to get 0 in the first free column
   slowed down the search or added extra moves.
@@ -293,14 +290,19 @@ def reconstruct_path(node: Node) -> List[Node]:
   path.reverse()
   return path
   
+  
 def heuristic(current_state: Tuple[Tuple[int, ...], ...], all_blocks: Tuple[int, ...]) -> int:
   """
-  This heuristic looks at each block.
-  If the block below a block is not correct, then we know that block is misplaced.
-  However, it is not enough to just count the number of misplaced blocks.
+  This heuristic looks at each block and adds 1 to a misplaced count.
   Some blocks are restricted by other blocks, so it takes more moves to get them to the correct position.
-  I calculate that by counting the number of blocks above the misplaced block.
+  I calculate that by counting the number of blocks above the misplaced block and adding to the misplaced count.
   
+  In some extreme cases, like if the state was [1,0,2,3,4,5,6,7,8,9], the heuristic would be 27,
+  but the actual number of steps it takes is around 19. When the blocks are spread out more, the heuristic
+  is less likely to overestimate the number of steps.
+  
+  I have done some tests where I do not count the blocks above the misplaced block, and while it does
+  find a solution, it often takes much longer.
   """
   misplaced = 0
   
